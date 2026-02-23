@@ -21,6 +21,7 @@ logging.basicConfig(
     ]
 )
 
+from sqlalchemy import text
 from .database import get_db, engine
 from .models import Base, AppConfig, Tool, RagSource, MCPToolCapabilities, DemoPrompt
 from .schemas import (
@@ -37,6 +38,17 @@ from .openai_client import openai_client
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+# Migration: add preferred_llm to demo_prompts if missing (existing DBs)
+def _migrate_demo_prompts_preferred_llm():
+    with engine.connect() as conn:
+        r = conn.execute(text("PRAGMA table_info(demo_prompts)"))
+        columns = [row[1] for row in r.fetchall()]
+        if "preferred_llm" not in columns:
+            conn.execute(text("ALTER TABLE demo_prompts ADD COLUMN preferred_llm VARCHAR"))
+            conn.commit()
+
+_migrate_demo_prompts_preferred_llm()
 
 app = FastAPI(
     title="Agentic Demo API",
@@ -376,6 +388,15 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     config = db.query(AppConfig).first()
     if not config:
         raise HTTPException(status_code=500, detail="No configuration found")
+
+    # If sent from a demo prompt suggestion with a preferred LLM, switch model permanently
+    if request.prompt_id:
+        demo_prompt = db.query(DemoPrompt).filter(DemoPrompt.id == request.prompt_id).first()
+        if demo_prompt and demo_prompt.preferred_llm:
+            valid_models = openai_client.get_models()
+            if demo_prompt.preferred_llm in valid_models:
+                config.openai_model = demo_prompt.preferred_llm
+                db.commit()
     
     # Create agent request
     agent_request = AgentRequest(
@@ -755,7 +776,9 @@ async def search_demo_prompts(
                 "full_content": prompt.content,
                 "title": prompt.title,
                 "category": prompt.category,
-                "is_malicious": prompt.is_malicious
+                "is_malicious": prompt.is_malicious,
+                "prompt_id": prompt.id,
+                "preferred_llm": getattr(prompt, "preferred_llm", None),
             })
         elif query in content_lower:
             # Use content for autocomplete
@@ -766,7 +789,9 @@ async def search_demo_prompts(
                 "full_content": prompt.content,
                 "title": prompt.title,
                 "category": prompt.category,
-                "is_malicious": prompt.is_malicious
+                "is_malicious": prompt.is_malicious,
+                "prompt_id": prompt.id,
+                "preferred_llm": getattr(prompt, "preferred_llm", None),
             })
     
     return {
@@ -778,7 +803,8 @@ async def search_demo_prompts(
                 "category": prompt.category,
                 "tags": prompt.tags,
                 "is_malicious": prompt.is_malicious,
-                "usage_count": prompt.usage_count
+                "usage_count": prompt.usage_count,
+                "preferred_llm": getattr(prompt, "preferred_llm", None),
             }
             for prompt in results
         ],

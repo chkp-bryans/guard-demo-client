@@ -42,6 +42,7 @@ export interface AppConfigUpdate {
 export interface ChatRequest {
   message: string;
   session_id?: string;
+  prompt_id?: number;
 }
 
 export interface ChatResponse {
@@ -127,6 +128,7 @@ export interface DemoPrompt {
   category: string;
   tags: string[];
   is_malicious: boolean;
+  preferred_llm?: string;
   usage_count: number;
   created_at: string;
   updated_at: string;
@@ -138,6 +140,7 @@ export interface DemoPromptCreate {
   category: string;
   tags: string[];
   is_malicious: boolean;
+  preferred_llm?: string | null;
 }
 
 export interface DemoPromptUpdate extends DemoPromptCreate {}
@@ -148,6 +151,8 @@ export interface DemoPromptSuggestion {
   title: string;
   category: string;
   is_malicious: boolean;
+  prompt_id?: number;
+  preferred_llm?: string;
 }
 
 export interface DemoPromptSearchResponse {

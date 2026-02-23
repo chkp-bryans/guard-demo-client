@@ -19,6 +19,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onLakeraToggle, forceExpanded, 
   const [suggestions, setSuggestions] = useState<DemoPromptSuggestion[]>([]);
   const [currentSuggestion, setCurrentSuggestion] = useState<DemoPromptSuggestion | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [promptIdForNextSend, setPromptIdForNextSend] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +87,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onLakeraToggle, forceExpanded, 
   const completeSuggestion = () => {
     if (currentSuggestion) {
       setInputMessage(currentSuggestion.full_content);
+      setPromptIdForNextSend(currentSuggestion.prompt_id ?? null);
       setSuggestions([]);
       setCurrentSuggestion(null);
       setShowSuggestions(false);
@@ -117,6 +119,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onLakeraToggle, forceExpanded, 
     try {
       const response = await apiService.sendMessage({
         message: inputMessage,
+        ...(promptIdForNextSend != null ? { prompt_id: promptIdForNextSend } : {}),
       });
 
       const assistantMessage: ChatMessage = {
@@ -144,6 +147,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onLakeraToggle, forceExpanded, 
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
+      setPromptIdForNextSend(null);
       setIsLoading(false);
     }
   };
@@ -321,6 +325,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ onLakeraToggle, forceExpanded, 
                       }`}
                       onClick={() => {
                         setInputMessage(suggestion.full_content);
+                        setPromptIdForNextSend(suggestion.prompt_id ?? null);
                         setSuggestions([]);
                         setCurrentSuggestion(null);
                         setShowSuggestions(false);
