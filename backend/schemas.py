@@ -36,6 +36,7 @@ class AppConfigUpdate(AppConfigBase):
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    prompt_id: Optional[int] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -88,6 +89,7 @@ class DemoPromptBase(BaseModel):
     category: str = "general"
     tags: List[str] = []
     is_malicious: bool = False
+    preferred_llm: Optional[str] = None
 
 class DemoPromptResponse(DemoPromptBase):
     id: int

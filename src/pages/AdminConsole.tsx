@@ -28,6 +28,20 @@ const AdminConsole: React.FC = () => {
   const progressPollingRef = useRef<number | null>(null);
   const ragManagementRef = React.useRef<RagManagementRef>(null);
 
+  // Export sections: safe defaults on, api_keys and project_ids off
+  const [exportInclude, setExportInclude] = useState<Record<string, boolean>>({
+    appearance: true,
+    llm: true,
+    security: true,
+    rag_scanning: true,
+    demo_prompts: true,
+    tools: true,
+    rag: true,
+    api_keys: false,
+    project_ids: false,
+  });
+  const [lastImportIncludes, setLastImportIncludes] = useState<string[] | null>(null);
+
   useEffect(() => {
     loadConfig();
     loadModels();
@@ -278,17 +292,15 @@ const AdminConsole: React.FC = () => {
 
   const handleExport = async () => {
     setIsExporting(true);
-    setMessage(null); // Clear any existing messages
-    
+    setMessage(null);
     try {
-      const blob = await apiService.exportConfig();
+      const include = Object.entries(exportInclude)
+        .filter(([, checked]) => checked)
+        .map(([key]) => key);
+      const blob = await apiService.exportConfig(include.length > 0 ? include : undefined);
       const url = window.URL.createObjectURL(blob);
-      
-      // Generate default filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const defaultFilename = `agentic_demo_config_${timestamp}.zip`;
-      
-      // Create a temporary input element to trigger "Save As" dialog
       const a = document.createElement('a');
       a.href = url;
       a.download = defaultFilename;
@@ -296,7 +308,6 @@ const AdminConsole: React.FC = () => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      
       window.URL.revokeObjectURL(url);
       setMessage({ type: 'success', text: 'Configuration exported successfully' });
     } catch (error) {
@@ -309,12 +320,29 @@ const AdminConsole: React.FC = () => {
 
   const handleImport = async (file: File) => {
     setIsImporting(true);
-    setMessage(null); // Clear any existing messages
-    
+    setMessage(null);
+    setLastImportIncludes(null);
     try {
-      await apiService.importConfig(file);
+      const result = await apiService.importConfig(file);
       await loadConfig();
-      setMessage({ type: 'success', text: 'Configuration imported successfully' });
+      if (result.metadata?.includes?.length) {
+        setLastImportIncludes(result.metadata.includes);
+        const labels: Record<string, string> = {
+          appearance: 'Appearance',
+          llm: 'LLM',
+          security: 'Security',
+          rag_scanning: 'RAG scanning',
+          demo_prompts: 'Demo prompts',
+          tools: 'Tools',
+          rag: 'RAG',
+          api_keys: 'API keys',
+          project_ids: 'Project IDs',
+        };
+        const names = result.metadata.includes.map((s: string) => labels[s] || s);
+        setMessage({ type: 'success', text: `Imported: ${names.join(', ')}` });
+      } else {
+        setMessage({ type: 'success', text: 'Configuration imported successfully' });
+      }
     } catch (error) {
       console.error('Import failed:', error);
       setMessage({ type: 'error', text: 'Failed to import configuration' });
@@ -1108,8 +1136,51 @@ const AdminConsole: React.FC = () => {
                 <div className="bg-gray-50 p-6 rounded-lg">
                   <h3 className="text-md font-medium text-gray-800 mb-4">Export Configuration</h3>
                   <p className="text-sm text-gray-600 mb-4">
-                    Download your current configuration as a zip file for backup or sharing.
+                    Choose what to include. By default, API keys and project IDs are excluded so the file is safe to share for demo setup.
                   </p>
+                  <div className="space-y-2 mb-4">
+                    {[
+                      { key: 'appearance', label: 'Appearance (branding, hero, logo)' },
+                      { key: 'llm', label: 'LLM settings (model, temperature, system prompt)' },
+                      { key: 'security', label: 'Security toggles (Lakera enabled/blocking)' },
+                      { key: 'rag_scanning', label: 'RAG scanning (toggle only)' },
+                      { key: 'demo_prompts', label: 'Demo prompts' },
+                      { key: 'tools', label: 'Tools' },
+                      { key: 'rag', label: 'RAG sources + vector store' },
+                    ].map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportInclude[key] ?? false}
+                          onChange={(e) => setExportInclude((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{label}</span>
+                      </label>
+                    ))}
+                    <div className="border-t border-gray-200 pt-2 mt-2 space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportInclude.api_keys ?? false}
+                          onChange={(e) => setExportInclude((prev) => ({ ...prev, api_keys: e.target.checked }))}
+                          className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Include API keys</span>
+                      </label>
+                      <p className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">Only for your own backup; do not share.</p>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportInclude.project_ids ?? false}
+                          onChange={(e) => setExportInclude((prev) => ({ ...prev, project_ids: e.target.checked }))}
+                          className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Include project IDs</span>
+                      </label>
+                      <p className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">Only for your own backup; do not share.</p>
+                    </div>
+                  </div>
                   <button
                     onClick={handleExport}
                     disabled={isExporting}
@@ -1131,8 +1202,16 @@ const AdminConsole: React.FC = () => {
                 <div className="bg-gray-50 p-6 rounded-lg">
                   <h3 className="text-md font-medium text-gray-800 mb-4">Import Configuration</h3>
                   <p className="text-sm text-gray-600 mb-4">
-                    Upload a previously exported configuration file to restore settings.
+                    Upload a previously exported zip. Only the sections present in the file are applied; your API keys and project IDs are left unchanged unless the file included them.
                   </p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    To get demo prompts, export from an environment that already has them (with &quot;Demo prompts&quot; checked), then import that file here. Zips from the old export format do not include demo prompts.
+                  </p>
+                  {lastImportIncludes && lastImportIncludes.length > 0 && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Last import applied: {lastImportIncludes.join(', ')}
+                    </p>
+                  )}
                   {isImporting ? (
                     <div className="flex items-center space-x-2 text-primary-600">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
@@ -1145,6 +1224,7 @@ const AdminConsole: React.FC = () => {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) handleImport(file);
+                        e.target.value = '';
                       }}
                       className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-600 file:text-white hover:file:bg-primary-700"
                     />

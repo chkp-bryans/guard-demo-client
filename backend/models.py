@@ -72,6 +72,7 @@ class DemoPrompt(Base):
     category = Column(String, default="general")  # "general", "security", "tools", "rag", etc.
     tags = Column(JSON, default=[])  # Array of searchable tags
     is_malicious = Column(Boolean, default=False)  # Flag for security testing prompts
+    preferred_llm = Column(String, nullable=True)  # Optional preferred backend model for this prompt
     usage_count = Column(Integer, default=0)  # Track popularity
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
