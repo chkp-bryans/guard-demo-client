@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: guard-demo-backend
+    # Dokploy: add env vars in the UI; it writes to .env next to the compose file.
+    env_file:
+      - .env
+    environment:
+      # Reference only what you need; Dokploy recommends either env_file or ${VAR} usage.
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LAKERA_GUARD_API_KEY: ${LAKERA_GUARD_API_KEY:-}
+      # If the backend needs to know where to bind:
+      HOST: 0.0.0.0
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist project data (SQLite DB and Chroma vectors),
+      # as well as uploads/exports used by the app.
+      - data:/app/data
+      - uploads:/app/uploads
+      - exports:/app/exports
+    healthcheck:
+      # The repo exposes FastAPI docs at /docs; use as a basic liveness check.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/docs >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: guard-demo-frontend
+    env_file:
+      - .env
+    environment:
+      # Frontend (Vite) often needs the API base at build-time.
+      # Using localhost makes browser calls hit your host at :8000 (as documented).
+      VITE_BACKEND_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  data:
+  uploads:
+  exports:
+``
